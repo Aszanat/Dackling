@@ -22,7 +22,7 @@ let [Int]->Int: listSum l = match l with
 // output: 10
 // look out for indentation! If "in" is on "let" level or on "|" level (or farther) it is not going to work!
 
-let Int->[Int]: upTo x = let Int->[Int]->[Int]: help l e = if (e == 0) then l else (help (e::l) (e-1)) in (help [::] x)
+let Int->[Int]: upTo x = let [Int]->Int->[Int]: help l e = if (e == 0) then l else (help (e::l) (e-1)) in (help [::] x)
 
 let Int->Int: square x = x * x
 

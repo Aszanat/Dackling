@@ -19,7 +19,7 @@ import PrintDackling (Print, printString, printTree)
 import SkelDackling ()
 import System.Environment (getArgs)
 import System.Exit (exitFailure)
-import Test.QuickCheck.Test (failureSummaryAndReason)
+import Test.QuickCheck.Test (Result (tables), failureSummaryAndReason)
 import Test.QuickCheck.Text (Str)
 import Prelude (Bool (..), Either (..), FilePath, Foldable (foldr), IO, Int, Maybe (Just, Nothing), Show, String, concat, const, getContents, mapM_, print, putStrLn, readFile, show, unlines, ($), (++), (.), (<$>), (>), (>>), (>>=))
 
@@ -92,6 +92,12 @@ getTypePos (FunType p _ _) = p
 getTypePos (FunArg p _ _) = p
 getTypePos (LiType p _) = p
 getTypePos (Any p) = p
+
+isPrimitive :: Type -> Bool
+isPrimitive (Int _) = True
+isPrimitive (Bool _) = True
+isPrimitive (LiType _ t) = isPrimitive t
+isPrimitive _ = False
 
 -- Thanks, Wojciech Drozd!
 sameT :: Type' a -> Type' b -> Bool
@@ -293,12 +299,15 @@ checkType expr env = case expr of
         foldr
           ( \patel pacc -> do
               patelt <- checkPatType t patel env
-              if sameType patelt t
-                then return patelt
-                else Left ("Type of result of MATCH different for empty and non-empty list: " ++ show patelt ++ " is different than " ++ show pacc)
-                -- the error message above is SHIT - think of something more meaningful...
+              case pacc of
+                Left s -> Left s
+                Right pacct ->
+                  if sameType patelt pacct
+                    then return patelt
+                    else Left ("Type of result of MATCH different for empty and non-empty list: " ++ show patelt ++ " is different than " ++ show pacc)
+                    -- the error message above is SHIT - think of something more meaningful...
           )
-          (Right t)
+          (Right (Any pos))
           pat
       _ -> Left ("MATCH of a non-list expression at " ++ show pos)
 
@@ -307,12 +316,15 @@ checkInstructions (Program _ []) _ = do
   putStrLn "End of the program."
 checkInstructions (Program p0 (i : is)) glenv = case i of
   ExprInstr p expr -> case checkType expr glenv of
-    Right t -> print (show t) >> checkInstructions (Program p0 is) glenv
+    Right t ->
+      if isPrimitive t
+        then print (show t) >> checkInstructions (Program p0 is) glenv
+        else print ("Type " ++ show (const () <$> t) ++ " is not primitive, so the expression at " ++ show (getTypePos t) ++ " can not be evaluated.")
     Left s -> print s
   DefInstr p (FunDef fp t (Ident id) ids exp) -> case find glenv id p of
     Right tp -> print ("Conflicting names, " ++ id ++ " already exists, declared at " ++ show (getTypePos tp))
     Left _ -> case newEnv t ids (Right glenv) p of
-      Right newenv -> print (show (checkType exp newenv)) >> checkInstructions (Program p0 is) ((id, t) : glenv)
+      Right newenv -> print (show (checkType exp ((id, t) : newenv))) >> checkInstructions (Program p0 is) ((id, t) : glenv)
       Left s -> print s
 
 -- 2DO: Expressions of type NON-INT and NON-BOOL and non- ([:)^n INT | BOOL (:]) ^ n aren't accepted as they can't be evaluated
