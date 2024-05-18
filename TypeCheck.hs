@@ -4,7 +4,7 @@
 -- | Program to test parser.
 module Main where
 
-import AbsDackling (BNFC'Position, Expr, Expr' (..), Ident (Ident), Instr' (..), Instructions, Instructions' (Program), Lam' (ELFun), RelOp' (..), Type, Type' (..))
+import AbsDackling (BNFC'Position, Def' (FunDef), Expr, Expr' (..), Ident (Ident), Instr' (..), Instructions, Instructions' (Program), Lam' (ELFun), Pat, Pat' (PEmpty, PList), RelOp' (..), Type, Type' (..))
 import Control.Monad
 import Data.Bool
 import Data.Eq ((==))
@@ -49,7 +49,7 @@ run v p s =
     Right tree -> do
       putStrLn "\nParse Successful!"
       showTree v tree
-      checkInstructions tree
+      checkInstructions tree []
   where
     ts = resolveLayout True $ myLexer s
     showPosToken ((l, c), t) = concat [show l, ":", show c, "\t", show t]
@@ -142,11 +142,19 @@ newEnv :: Type -> [Ident] -> Either String Env -> BNFC'Position -> Either String
 newEnv t [] e p = e
 newEnv _ _ (Left s) p = Left s
 newEnv t ((Ident a) : as) (Right env) p =
-  case find a of
-    Right _ pos -> Left ("Conflicting names, " ++ a ++ " already exists, declared at " ++ show pos)
+  case find env a p of
+    Right t -> Left ("Conflicting names, " ++ a ++ " already exists, declared at " ++ show (getTypePos t))
     Left _ -> case t of
       FunType pos t1 t2 -> newEnv t2 as (Right ((a, t1) : env)) p
       _ -> Left ("Too many arguments for a function at " ++ show p)
+
+checkPatType :: Type -> Pat -> Env -> Either String Type
+checkPatType _ (PEmpty pos exp) env = checkType exp env
+checkPatType matchT (PList pos (Ident id) (Ident ids) exp) env = case find env id pos of
+  Right t -> Left ("Conflicting names, " ++ id ++ " already exists, declared at " ++ show (getTypePos t))
+  Left _ -> case find env ids pos of
+    Right t -> Left ("Conflicting names, " ++ id ++ " already exists, declared at " ++ show (getTypePos t))
+    Left _ -> checkType exp ((id, (const pos) <$> matchT) : (ids, LiType pos (const pos <$> matchT)) : env)
 
 checkType :: Expr -> Env -> Either String Type
 checkType expr env = case expr of
@@ -258,19 +266,53 @@ checkType expr env = case expr of
             else Left ("Argument 2 of RelOp " ++ show op ++ "of a wrong type: " ++ show te2 ++ " instead of Int at " ++ show pos)
         _ -> Left ("Argument 1 of RelOp " ++ show op ++ "of a wrong type: " ++ show te1 ++ " instead of Int at " ++ show pos)
   -- ELet a (Type' a) Ident [Ident] (Expr' a) (Expr' a)
-  ELet pos tp id args body exp -> case find env id pos of
-    Right t -> Left ("Conflicting names, " ++ a ++ " already exists, declared at " ++ show pos)
+  ELet pos tp (Ident id) args body exp -> case find env id pos of
+    Right t -> Left ("Conflicting names, " ++ id ++ " already exists, declared at " ++ show (getTypePos t))
     Left _ -> do
-      newenv <- newEnv tp args (Right (id, tp) : env) pos
+      newenv <- newEnv tp args (Right ((id, tp) : env)) pos
       et <- matchArgTypes (Right tp) (fmap (EVar pos) args) newenv
       at <- checkType body newenv
+      if sameType et at
+        then checkType exp ((id, tp) : env)
+        else Left ("Types do not match at " ++ show pos ++ ": declared return type " ++ show et ++ " is not equal to body type " ++ show at)
+  EIf pos cond texp fexp -> do
+    condt <- checkType cond env
+    if sameType condt (Bool pos)
+      then do
+        tt <- checkType texp env
+        ft <- checkType fexp env
+        if sameType tt ft
+          then return tt
+          else Left ("Type of result of IF different for true: " ++ show tt ++ " and false: " ++ show ft)
+      else Left ("IF condition of a wrong type: " ++ show condt ++ " instead of Bool")
+  EMatch pos (Ident id) pat -> do
+    idt <- find env id pos
+    case idt of
+      LiType _ t ->
+        -- foldr operacja akumulator lista
+        foldr
+          ( \patel pacc -> do
+              patelt <- checkPatType t patel env
+              if sameType patelt t
+                then return patelt
+                else Left ("Type of result of MATCH different for empty and non-empty list: " ++ show patelt ++ " is different than " ++ show pacc)
+                -- the error message above is SHIT - think of something more meaningful...
+          )
+          (Right t)
+          pat
+      _ -> Left ("MATCH of a non-list expression at " ++ show pos)
 
-checkInstructions :: Instructions -> IO ()
-checkInstructions (Program _ []) = do
+checkInstructions :: Instructions -> Env -> IO ()
+checkInstructions (Program _ []) _ = do
   putStrLn "End of the program."
-checkInstructions (Program p0 (i : is)) = case i of
-  ExprInstr p expr -> case checkType expr [] of
-    Right t -> print (show t) >> checkInstructions (Program p0 is)
+checkInstructions (Program p0 (i : is)) glenv = case i of
+  ExprInstr p expr -> case checkType expr glenv of
+    Right t -> print (show t) >> checkInstructions (Program p0 is) glenv
     Left s -> print s
+  DefInstr p (FunDef fp t (Ident id) ids exp) -> case find glenv id p of
+    Right tp -> print ("Conflicting names, " ++ id ++ " already exists, declared at " ++ show (getTypePos tp))
+    Left _ -> case newEnv t ids (Right glenv) p of
+      Right newenv -> print (show (checkType exp newenv)) >> checkInstructions (Program p0 is) ((id, t) : glenv)
+      Left s -> print s
 
 -- 2DO: Expressions of type NON-INT and NON-BOOL and non- ([:)^n INT | BOOL (:]) ^ n aren't accepted as they can't be evaluated
