@@ -1,0 +1,3 @@
+let Int->Int->Int: f x y = x / y
+
+f 1 0

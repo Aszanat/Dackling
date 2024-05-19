@@ -2,9 +2,9 @@
 -- modified by me, not sure how yet tho xddd
 
 -- | Program to test parser.
-module Main where
+module TypeCheck where
 
-import AbsDackling (BNFC'Position, Def' (FunDef), Expr, Expr' (..), Ident (Ident), Instr' (..), Instructions, Instructions' (Program), Lam' (ELFun), Pat, Pat' (PEmpty, PList), RelOp' (..), Type, Type' (..))
+import AbsDackling (BNFC'Position, Def' (FunDef), Expr, Expr' (..), HasPosition (hasPosition), Ident (Ident), Instr' (..), Instructions, Instructions' (Program), Lam' (ELFun), Pat, Pat' (PEmpty, PList), RelOp' (..), Type, Type' (..))
 import Control.Monad
 import Data.Bool
 import Data.Eq ((==))
@@ -23,83 +23,19 @@ import Test.QuickCheck.Test (Result (tables), failureSummaryAndReason)
 import Test.QuickCheck.Text (Str)
 import Prelude (Bool (..), Either (..), FilePath, Foldable (foldr), IO, Int, Maybe (Just, Nothing), Show, String, concat, const, getContents, mapM_, print, putStrLn, readFile, show, unlines, ($), (++), (.), (<$>), (>), (>>), (>>=))
 
-type Err = Either String
-
-type ParseFun a = [Token] -> Err a
-
-type Verbosity = Int
-
-putStrV :: Verbosity -> String -> IO ()
-putStrV v s = when (v > 1) $ putStrLn s
-
--- runFile :: (Print a, Show a) => Verbosity -> ParseFun a -> FilePath -> IO ()
-runFile :: Verbosity -> ParseFun Instructions -> FilePath -> IO ()
-runFile v p f = putStrLn f >> readFile f >>= run v p
-
--- run :: (Print a, Show a) => Verbosity -> ParseFun a -> String -> IO ()
-run :: Verbosity -> ParseFun Instructions -> String -> IO ()
-run v p s =
-  case p ts of
-    Left err -> do
-      putStrLn "\nParse              Failed...\n"
-      putStrV v "Tokens:"
-      mapM_ (putStrV v . showPosToken . mkPosToken) ts
-      putStrLn err
-      exitFailure
-    Right tree -> do
-      putStrLn "\nParse Successful!"
-      showTree v tree
-      checkInstructions tree []
-  where
-    ts = resolveLayout True $ myLexer s
-    showPosToken ((l, c), t) = concat [show l, ":", show c, "\t", show t]
-
-showTree :: (Show a, Print a) => Int -> a -> IO ()
-showTree v tree = do
-  putStrV v $ "\n[Abstract Syntax]\n\n" ++ show tree
-  putStrV v $ "\n[Linearized tree]\n\n" ++ printTree tree
-
-usage :: IO ()
-usage = do
-  putStrLn $
-    unlines
-      [ "usage: Call with one of the following argument combinations:",
-        "  --help          Display this help message.",
-        "  (no arguments)  Parse stdin verbosely.",
-        "  (files)         Parse content of files verbosely.",
-        "  -s (files)      Silent mode. Parse content of files silently."
-      ]
-
-main :: IO ()
-main = do
-  args <- getArgs
-  case args of
-    ["--help"] -> usage
-    [] -> getContents >>= run 2 pInstructions
-    "-s" : fs -> mapM_ (runFile 0 pInstructions) fs
-    fs -> mapM_ (runFile 2 pInstructions) fs
-
 type Env = [(String, Type)]
 
 find :: Env -> String -> BNFC'Position -> Either String Type
 find [] id pos = Left ("Identifier not found: " ++ id ++ " at " ++ show pos)
 find ((xname, xtype) : xs) name pos = if xname == name then Right xtype else find xs name pos
 
-getTypePos :: Type -> BNFC'Position
-getTypePos (Int p) = p
-getTypePos (Bool p) = p
-getTypePos (FunType p _ _) = p
-getTypePos (FunArg p _ _) = p
-getTypePos (LiType p _) = p
-getTypePos (Any p) = p
-
 isPrimitive :: Type -> Bool
 isPrimitive (Int _) = True
 isPrimitive (Bool _) = True
 isPrimitive (LiType _ t) = isPrimitive t
+isPrimitive (Any _) = True
 isPrimitive _ = False
 
--- Thanks, Wojciech Drozd!
 sameT :: Type' a -> Type' b -> Bool
 sameT t1 t2 = ((\x -> ()) <$> t1) == (const () <$> t2)
 
@@ -149,7 +85,7 @@ newEnv t [] e p = e
 newEnv _ _ (Left s) p = Left s
 newEnv t ((Ident a) : as) (Right env) p =
   case find env a p of
-    Right t -> Left ("Conflicting names, " ++ a ++ " already exists, declared at " ++ show (getTypePos t))
+    Right t -> Left ("Conflicting names, " ++ a ++ " already exists, declared at " ++ show (hasPosition t))
     Left _ -> case t of
       FunType pos t1 t2 -> newEnv t2 as (Right ((a, t1) : env)) p
       _ -> Left ("Too many arguments for a function at " ++ show p)
@@ -157,9 +93,9 @@ newEnv t ((Ident a) : as) (Right env) p =
 checkPatType :: Type -> Pat -> Env -> Either String Type
 checkPatType _ (PEmpty pos exp) env = checkType exp env
 checkPatType matchT (PList pos (Ident id) (Ident ids) exp) env = case find env id pos of
-  Right t -> Left ("Conflicting names, " ++ id ++ " already exists, declared at " ++ show (getTypePos t))
+  Right t -> Left ("Conflicting names, " ++ id ++ " already exists, declared at " ++ show (hasPosition t))
   Left _ -> case find env ids pos of
-    Right t -> Left ("Conflicting names, " ++ id ++ " already exists, declared at " ++ show (getTypePos t))
+    Right t -> Left ("Conflicting names, " ++ id ++ " already exists, declared at " ++ show (hasPosition t))
     Left _ -> checkType exp ((id, (const pos) <$> matchT) : (ids, LiType pos (const pos <$> matchT)) : env)
 
 checkType :: Expr -> Env -> Either String Type
@@ -271,9 +207,8 @@ checkType expr env = case expr of
             then return te1
             else Left ("Argument 2 of RelOp " ++ show op ++ "of a wrong type: " ++ show te2 ++ " instead of Int at " ++ show pos)
         _ -> Left ("Argument 1 of RelOp " ++ show op ++ "of a wrong type: " ++ show te1 ++ " instead of Int at " ++ show pos)
-  -- ELet a (Type' a) Ident [Ident] (Expr' a) (Expr' a)
   ELet pos tp (Ident id) args body exp -> case find env id pos of
-    Right t -> Left ("Conflicting names, " ++ id ++ " already exists, declared at " ++ show (getTypePos t))
+    Right t -> Left ("Conflicting names, " ++ id ++ " already exists, declared at " ++ show (hasPosition t))
     Left _ -> do
       newenv <- newEnv tp args (Right ((id, tp) : env)) pos
       et <- matchArgTypes (Right tp) (fmap (EVar pos) args) newenv
@@ -295,7 +230,6 @@ checkType expr env = case expr of
     idt <- find env id pos
     case idt of
       LiType _ t ->
-        -- foldr operacja akumulator lista
         foldr
           ( \patel pacc -> do
               patelt <- checkPatType t patel env
@@ -305,7 +239,7 @@ checkType expr env = case expr of
                   if sameType patelt pacct
                     then return patelt
                     else Left ("Type of result of MATCH different for empty and non-empty list: " ++ show patelt ++ " is different than " ++ show pacc)
-                    -- the error message above is SHIT - think of something more meaningful...
+                    -- the error message above is bad - think of something more meaningful...
           )
           (Right (Any pos))
           pat
@@ -319,12 +253,10 @@ checkInstructions (Program p0 (i : is)) glenv = case i of
     Right t ->
       if isPrimitive t
         then print (show t) >> checkInstructions (Program p0 is) glenv
-        else print ("Type " ++ show (const () <$> t) ++ " is not primitive, so the expression at " ++ show (getTypePos t) ++ " can not be evaluated.")
+        else print ("Type " ++ show (const () <$> t) ++ " is not primitive, so the expression at " ++ show (hasPosition t) ++ " can not be evaluated.")
     Left s -> print s
   DefInstr p (FunDef fp t (Ident id) ids exp) -> case find glenv id p of
-    Right tp -> print ("Conflicting names, " ++ id ++ " already exists, declared at " ++ show (getTypePos tp))
+    Right tp -> print ("Conflicting names, " ++ id ++ " already exists, declared at " ++ show (hasPosition tp))
     Left _ -> case newEnv t ids (Right glenv) p of
       Right newenv -> print (show (checkType exp ((id, t) : newenv))) >> checkInstructions (Program p0 is) ((id, t) : glenv)
       Left s -> print s
-
--- 2DO: Expressions of type NON-INT and NON-BOOL and non- ([:)^n INT | BOOL (:]) ^ n aren't accepted as they can't be evaluated

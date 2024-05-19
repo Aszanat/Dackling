@@ -14,7 +14,7 @@ ALEX_OPTS  = --ghc
 
 # Default goal.
 
-all : TestDackling
+all : Dackling
 
 # Rules for building the parser.
 
@@ -27,7 +27,7 @@ AbsDackling.hs LayoutDackling.hs LexDackling.x ParDackling.y PrintDackling.hs Te
 %.hs : %.x
 	${ALEX} ${ALEX_OPTS} $<
 
-TestDackling : AbsDackling.hs LayoutDackling.hs LexDackling.hs ParDackling.hs PrintDackling.hs TestDackling.hs
+Dackling : AbsDackling.hs LayoutDackling.hs LexDackling.hs ParDackling.hs PrintDackling.hs TypeCheck.hs Dackling.hs
 	${GHC} ${GHC_OPTS} $@
 
 # Rules for cleaning generated files.

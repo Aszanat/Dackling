@@ -1,0 +1,5 @@
+let [Int]->Int: listSum l = match l with
+    | x :: xs -> x + listSum xs
+    | [::] -> 0
+in listSum [:1, 2, 3, 4:]
+\\ "in" taken as a start of a new instruction due to its layout

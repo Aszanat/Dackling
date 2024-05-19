@@ -30,7 +30,7 @@ EFalse.     Expr6 ::= "false" ;
 
 EVar.       Expr6 ::= Ident ;
 
-ELFun.      Lam ::= "\\" Type [Ident] "->" Expr6 "\\" ;
+ELFun.      Lam ::= "\\" Type [Ident] "=" Expr6 "\\" ;
 
 ELExp.      Expr6 ::= Lam ;
 

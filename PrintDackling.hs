@@ -197,7 +197,7 @@ instance Print (AbsDackling.Expr' a) where
 
 instance Print (AbsDackling.Lam' a) where
   prt i = \case
-    AbsDackling.ELFun _ type_ ids expr -> prPrec i 0 (concatD [doc (showString "\\"), prt 0 type_, prt 0 ids, doc (showString "->"), prt 6 expr, doc (showString "\\")])
+    AbsDackling.ELFun _ type_ ids expr -> prPrec i 0 (concatD [doc (showString "\\"), prt 0 type_, prt 0 ids, doc (showString "="), prt 6 expr, doc (showString "\\")])
 
 instance Print (AbsDackling.Pat' a) where
   prt i = \case

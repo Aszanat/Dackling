@@ -1,0 +1,3 @@
+let Int->[Int]: upTo x = let [Int]->Int->[Int]: help l e = if (e == 0) then l else (help (e::l) (e-1)) in (help [::] x)
+
+upTo 5 10
