@@ -11,7 +11,8 @@ xor false true
 let Int->Int->Int: uselessPlus x y = x + y
 
 let Int->Int: plusOne s = uselessPlus 1 s
-// does not work without "s" on both sides - should it...? It's practically the same after all... But then, why SHOULDN'T it work, huh? It's different after all.
+// does not work without "s" on both sides
+// I know this way it is not exactly partial application, but it works the same...
 
 plusOne 2
 // Integer 3

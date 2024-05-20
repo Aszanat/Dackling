@@ -58,7 +58,7 @@ putStrV :: Verbosity -> String -> IO ()
 putStrV v s = when (v > 1) $ putStrLn s
 
 runFile :: Verbosity -> ParseFun Instructions -> FilePath -> IO ()
-runFile v p f = putStrLn f >> readFile f >>= run v p
+runFile v p f = readFile f >>= run v p
 
 run :: Verbosity -> ParseFun Instructions -> String -> IO ()
 run v p s =
@@ -70,38 +70,18 @@ run v p s =
       putStrLn err
       exitFailure
     Right tree -> do
-      putStrLn "\nParse Successful!"
-      showTree v tree
       checkInstructions tree []
       runInstructions tree []
   where
     ts = resolveLayout True $ myLexer s
     showPosToken ((l, c), t) = concat [show l, ":", show c, "\t", show t]
 
-showTree :: (Show a, Print a) => Int -> a -> IO ()
-showTree v tree = do
-  putStrV v $ "\n[Abstract Syntax]\n\n" ++ show tree
-  putStrV v $ "\n[Linearized tree]\n\n" ++ printTree tree
-
-usage :: IO ()
-usage = do
-  putStrLn $
-    unlines
-      [ "usage: Call with one of the following argument combinations:",
-        "  --help          Display this help message.",
-        "  (no arguments)  Parse stdin verbosely.",
-        "  (files)         Parse content of files verbosely.",
-        "  -s (files)      Silent mode. Parse content of files silently."
-      ]
-
 main :: IO ()
 main = do
   args <- getArgs
   case args of
-    ["--help"] -> usage
     [] -> getContents >>= run 2 pInstructions
-    "-s" : fs -> mapM_ (runFile 0 pInstructions) fs
-    fs -> mapM_ (runFile 2 pInstructions) fs
+    fs -> mapM_ (runFile 1 pInstructions) fs
 
 data Value = Boolean Bool | Integer Integer | List [Value] | Function [String] Expr
   deriving (Show, Eq)
@@ -109,7 +89,7 @@ data Value = Boolean Bool | Integer Integer | List [Value] | Function [String] E
 type Env = [(String, Value)]
 
 find :: Env -> String -> Either String Value
-find [] id = Left ("Identifier " ++ id ++ " not found.") -- is this going to ever be useful? Doubt, so I don't even include information about position. If I ever see an error without position, I'm going to take care of this.
+find [] id = Left ("Identifier " ++ id ++ " not found.")
 find ((e, val) : es) id =
   if e == id
     then return val
