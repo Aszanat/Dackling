@@ -1,0 +1,12 @@
+[:[::], [:true:], [:false, false:]:]
+
+let Int->Int: square x = x * x
+
+let Int->Int: cube x = x * x * x
+
+let [(Int->Int)]: funcList = [: \Int->Int x = x\, square, cube:]
+
+let [(Int->Int)]->Int->[Int]: applyList l x = match l with
+        | [::] -> [::]
+        | e :: es -> (e x) :: (applyList es x)
+    in applyList funcList 10

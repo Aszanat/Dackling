@@ -3,7 +3,7 @@
 -- | Program to test parser.
 module Main where
 
-import AbsDackling (AddOp' (Minus, Plus), BNFC'Position, Expr, Expr' (EAdd, EAnd, ECallFun, ECallLam, EEmpty, EFalse, EIf, EInt, ELExp, ELet, EList, EListAdd, EMatch, EMul, ENeg, ENot, EOr, ERel, ETrue, EVar), Ident (Ident), Instr' (ExprInstr), Instructions, Instructions' (Program), Lam' (ELFun), MulOp' (Div, Mod, Times), Pat' (PEmpty, PList), RelOp' (EQU, GE, GTH, LE, LTH, NE))
+import AbsDackling (AddOp' (Minus, Plus), BNFC'Position, Def' (FunDef), Expr, Expr' (EAdd, EAnd, ECallFun, ECallLam, EEmpty, EFalse, EIf, EInt, ELExp, ELet, EList, EListAdd, EMatch, EMul, ENeg, ENot, EOr, ERel, ETrue, EVar), Ident (Ident), Instr' (DefInstr, ExprInstr), Instructions, Instructions' (Program), Lam' (ELFun), MulOp' (Div, Mod, Times), Pat' (PEmpty, PList), RelOp' (EQU, GE, GTH, LE, LTH, NE))
 import Control.Monad (return, when)
 import LayoutDackling (resolveLayout)
 import LexDackling (Token, mkPosToken)
@@ -117,11 +117,11 @@ find ((e, val) : es) id =
 
 callEnv :: Env -> [String] -> [Expr] -> Either String Env
 callEnv env [] _ = Right env
-callEnv env _ [] = Right env -- this can be so unsafe because TypeCheck dod the dirty work for us
+callEnv env _ [] = Right env
 callEnv env (id : ids) (exp : exps) = do
-  -- shouldn't it, like, check if those already exist? Or TypeCheck is a big boy, doing it for us? It probably is tbh.
   val <- eval exp env
-  callEnv ((id, val) : env) ids exps
+  e <- callEnv env ids exps
+  return ((id, val) : e)
 
 eval :: Expr -> Env -> Either String Value
 eval (EInt _ x) env = return (Integer x)
@@ -236,6 +236,9 @@ eval (ERel p exp1 op exp2) env = do
       NE _ -> return (Boolean (v1 /= v2))
       _ -> Left ("Interpreter internal error: ordering lists at " ++ show p)
     _ -> Left ("Interpreter internal error: ERel of elements with no specified order at " ++ show p)
+eval (ELet _ t (Ident id) [] body exp) env = do
+  bodyval <- eval body env
+  eval exp ((id, bodyval) : env)
 eval (ELet _ t (Ident id) args body exp) env = eval exp ((id, Function (map (\(Ident x) -> x) args) body) : env)
 eval (EIf _ cond texp fexp) env = do
   condval <- eval cond env
@@ -248,14 +251,14 @@ eval (EMatch p (Ident id) pats) env = case pats of
   [pat1, pat2] -> do
     l <- find env id
     case (pat1, pat2) of
-      (PEmpty _ eexp, PList _ idel idli lexp) ->
-        if l == List []
-          then eval eexp env
-          else eval lexp env
-      (PList _ idel idli lexp, PEmpty _ eexp) ->
-        if l == List []
-          then eval eexp env
-          else eval lexp env
+      (PEmpty _ eexp, PList _ (Ident el) (Ident li) lexp) -> case l of
+        List [] -> eval eexp env
+        List (x : xs) -> eval lexp ((el, x) : (li, List xs) : env)
+        _ -> Left ("Pattern matching of a non-list " ++ show l ++ " at " ++ show p)
+      (PList _ (Ident el) (Ident li) lexp, PEmpty _ eexp) -> case l of
+        List [] -> eval eexp env
+        List (x : xs) -> eval lexp ((el, x) : (li, List xs) : env)
+        _ -> Left ("Pattern matching of a non-list " ++ show l ++ " at " ++ show p)
       _ -> Left ("Pattern matching inconsistent at " ++ show p ++ ": too many versions for one option")
   _ -> Left ("Pattern matching inconsistent at " ++ show p ++ ": too many versions for one option")
 
@@ -265,5 +268,7 @@ runInstructions (Program p (i : is)) glenv = case i of
   ExprInstr _ exp -> case eval exp glenv of
     Right r -> print (show r) >> runInstructions (Program p is) glenv
     Left s -> print s
-
--- DefInstr _ (FunDef _ t (Ident id) ids exp) ->
+  DefInstr _ (FunDef _ t (Ident id) [] body) -> case eval body glenv of
+    Right bodyval -> runInstructions (Program p is) ((id, bodyval) : glenv)
+    Left s -> print s
+  DefInstr _ (FunDef _ t (Ident id) args body) -> runInstructions (Program p is) ((id, Function (map (\(Ident x) -> x) args) body) : glenv)

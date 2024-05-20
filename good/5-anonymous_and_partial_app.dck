@@ -1,0 +1,22 @@
+\Int->Int->Bool x y = (x < y)\ 5 4
+// Boolean False
+
+let Bool->Bool->Bool: xor = \Bool->Bool->Bool x y = (if (x == y) then false else (x || y))\
+
+xor true true
+// Boolean False
+xor false true
+// Boolean True
+
+let Int->Int->Int: uselessPlus x y = x + y
+
+let Int->Int: plusOne s = uselessPlus 1 s
+// does not work without "s" on both sides - should it...? It's practically the same after all... But then, why SHOULDN'T it work, huh? It's different after all.
+
+plusOne 2
+// Integer 3
+
+let (Int->Int)->Int->Int: twoIntegerFuncEvaluator f x = f x
+
+twoIntegerFuncEvaluator plusOne 10
+// Integer 11

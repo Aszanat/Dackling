@@ -1,0 +1,12 @@
+if (3 > 4) then 5 else 6
+// Integer 6
+
+if true then 7 else 6
+// Integer 7
+
+let Int: x = 8 in if (x <= 9) then true else false
+// Boolean True
+
+let Bool: t = true
+if (t && false) then 0 else 1
+// Integer 1
